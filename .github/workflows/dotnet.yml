@@ -29,7 +29,7 @@ jobs:
     - name: dotnet publish
       run: dotnet publish src/Vihzin.Hub/Vihzin.Hub.csproj -c Release -r linux-x64 --self-contained -o deploy
     - name: Copy via ssh
-      uses: garygrossgarten/github-action-scp@v0.7.3
+      uses: garygrossgarten/github-action-scp@release
       with:
         local: /home/runner/work/Vihzin/Vihzin/deploy/
         remote: ${{ secrets.REMOTE_TARGET }}
