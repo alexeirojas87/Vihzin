@@ -31,7 +31,7 @@ jobs:
     - name: Copy via ssh
       uses: garygrossgarten/github-action-scp@v0.7.3
       with:
-        local: /root/vihzin/deploy/
+        local: /home/runner/work/vihzin/vihzin/deploy/
         remote: ${{ secrets.REMOTE_TARGET }}
         host: ${{ secrets.REMOTE_HOST_DEV }}
         username: ${{ secrets.REMOTE_USER }}
