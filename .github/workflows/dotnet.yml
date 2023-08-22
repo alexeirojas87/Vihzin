@@ -27,7 +27,7 @@ jobs:
     - name: Test
       run: dotnet test --no-build --verbosity normal
     - name: dotnet publish
-        run: dotnet publish src/Vihzin.Hub/Vihzin.Hub.csproj -c Release -r linux-x64 --self-contained -o deploy
+      run: dotnet publish src/Vihzin.Hub/Vihzin.Hub.csproj -c Release -r linux-x64 --self-contained -o deploy
     name: Copy via ssh
         uses: garygrossgarten/github-action-scp@v0.7.3
         with:
