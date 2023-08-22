@@ -1,0 +1,241 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <title>ASP.NET Core SignalR Sample</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div>
+        <h1>ASP.NET Core SignalR Sample</h1>
+        <p>
+            Here is an example of a SignalR client using JS,
+            this client connects to a vihzinHub and transmit audio and video using signalr and webRTC
+        </p>
+        <h2 id="userI">User:0</h2>
+        <h1>Usuarios Conectados</h1>
+        <textarea id="userList" rows="10" cols="30" readonly></textarea>
+        <input type="text" id="inputText" placeholder="User id to connect..">
+        <button onclick="Call()">Iniciar Llamada</button>
+        <button onclick="ShareScreen()">Share Screen</button>
+        <video id="remoteVideo" autoplay></video>
+        <audio id="remoteAudio" autoplay></audio>
+        <video id="remoteScreen" autoplay></video>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <h2>Confirmación</h2>
+            <p>¿Estás seguro de realizar esta acción?</p>
+            <button onclick="confirmarAccion(true)">Aceptar</button>
+            <button onclick="confirmarAccion(false)">Cancelar</button>
+        </div>
+    </div>
+</body>
+
+</html>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.0/signalr.min.js"></script>
+<script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+<script>
+    const modal = document.getElementById('modal');
+    let resolverPromesa;
+
+    const getLocalScreenCaptureStream = async () => {
+        try {
+            const constraints = { video: { cursor: 'always' }, audio: false };
+            const screenCaptureStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+
+            return screenCaptureStream;
+        } catch (error) {
+            console.error('failed to get local screen', error);
+        }
+    };
+
+    async function ShareScreen() {
+        const mediaStream = await getLocalScreenCaptureStream();
+
+        const screenTrack = mediaStream.getVideoTracks()[0];
+        const sender = peerConnection.getSenders().find(sender =>
+            sender.track.kind === screenTrack.kind
+        );
+        sender.replaceTrack(screenTrack);
+    }
+    function abrirModal() {
+        modal.style.display = 'block';
+        return new Promise((resolve) => {
+            resolverPromesa = resolve;
+        });
+    }
+    function confirmarAccion(decision) {
+        modal.style.display = 'none';
+        resolverPromesa(decision);
+    }
+
+    const offerOptions = {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+        offerToReceiveScreen: true
+    };
+    function actualizarListaUsuarios(userId) {
+        const userListTextarea = document.getElementById('userList');
+        userListTextarea.value += userId + '\n';
+    }
+
+    function updateMyUser(userId) {
+        const h2MyUser = document.getElementById('userI')
+        h2MyUser.textContent = `User:${userId}`
+    }
+
+
+    /*WebRTC*/
+    var peerConnection = new RTCPeerConnection();
+    // Escuchar eventos ICE para intercambio de candidatos ICE.
+
+
+    peerConnection.ontrack = (event) => {
+        const remoteVideo = document.getElementById("remoteVideo");
+        const remoteScreen = document.getElementById("remoteScreen");
+        console.log(event.track.kind)
+        // Verificar si la pista es de video o pantalla compartida
+        if (event.track.kind === "video") {
+            remoteVideo.srcObject = event.streams[0];
+        } else if (event.track.kind === "screen") {
+            remoteScreen.srcObject = event.streams[0];
+        }
+    };
+
+    // Cuando se reciba un flujo de audio remoto.
+    peerConnection.onaddstream = (event) => {
+        const remoteAudio = document.getElementById("remoteAudio");
+        remoteAudio.srcObject = event.stream;
+    };
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("http://localhost:5129/vihzinHub")
+        .configureLogging(signalR.LogLevel.Information)
+        .build();
+
+    connection.on("UserConnected", (userId) => {
+        actualizarListaUsuarios(userId)
+    })
+    // Cuando se reciba una oferta de otro usuario a través de SignalR.
+    connection.on("ReceiveOffer", async (offer, senderConnectionId) => {
+        try {
+
+            const decision = await abrirModal();
+
+            if (decision === true) {
+                console.log('Aceptado');
+                // Crear un nuevo RTCPeerConnection.
+                //peerConnection = new RTCPeerConnection();
+                const receivedOffer = JSON.parse(offer);
+                // Captura de pantalla
+                const constraints = { video: { cursor: 'always' }, audio: false };
+                const screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+                // Establecer el flujo local de medios (cámara y micrófono) en el RTCPeerConnection.
+                const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                // Agregar las pistas de la captura de pantalla a la corriente local
+                screenStream.getTracks().forEach(track => peerConnection.addTrack(track, screenStream));
+                // Establecer la descripción remota (oferta) en el RTCPeerConnection.
+                await peerConnection.setRemoteDescription(receivedOffer);
+
+                // Crear una respuesta a la oferta.
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                // Enviar la respuesta a través de SignalR al usuario que hizo la oferta.
+                const answerJson = JSON.stringify(answer);
+                connection.invoke("SendAnswer", answerJson, senderConnectionId);
+
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        // Enviar el candidato ICE al usuario que hizo la oferta.
+                        const candidate = JSON.stringify(event.candidate);
+                        connection.invoke("SendIceCandidate", candidate, senderConnectionId);
+                    }
+                };
+            } else {
+                console.log('Cancelado');
+                // Realiza acciones relacionadas con "Cancelar" aquí
+            }
+        } catch (error) {
+            console.error("Error al procesar la oferta:", error);
+        }
+    });
+
+    // Cuando se reciba una respuesta a la oferta que enviamos.
+    connection.on("ReceiveAnswer", async answer => {
+        try {
+            // Establecer la descripción remota (respuesta) en el RTCPeerConnection.
+            const receivedAnswer = JSON.parse(answer);
+            await peerConnection.setRemoteDescription(receivedAnswer);
+
+            // Manejar la llegada de flujos remotos (video y audio) aquí.
+        } catch (error) {
+            console.error("Error al procesar la respuesta:", error);
+        }
+    });
+
+    // Cuando se reciba un candidato ICE de otro usuario.
+    connection.on("ReceiveIceCandidate", async (iceCandidate) => {
+        try {
+            // Agregar el candidato ICE remoto al RTCPeerConnection.
+            const receivedIceCandidate = JSON.parse(iceCandidate);
+            await peerConnection.addIceCandidate(receivedIceCandidate);
+        } catch (error) {
+            console.error("Error al procesar el candidato ICE remoto:", error);
+        }
+    });
+
+    function Call() {
+        // Obtiene el valor del input tipo texto.
+        const inputValue = document.getElementById('inputText').value;
+        startCall(inputValue);
+        // Llama a la función startCall con el valor del input como argumento.
+        console.log("Valor del input:", inputValue);
+    }
+
+    // Cuando se desee iniciar una llamada con otro usuario.
+    function startCall(targetUserId) {
+        // Crear una oferta.
+        peerConnection.createOffer(offerOptions)
+            .then(offer => {
+                // Establecer la descripción local en el RTCPeerConnection.
+                return peerConnection.setLocalDescription(offer)
+                    .then(() => {
+                        // Enviar la oferta a través de SignalR al usuario de destino.
+                        const offerJson = JSON.stringify(offer);
+                        connection.invoke("SendOffer", offerJson, targetUserId);
+                    });
+            })
+            .catch(error => console.error("Error al crear la oferta:", error));
+    }
+
+    async function start() {
+        try {
+            await connection.start().then(() => {
+                // El cliente está conectado al servidor SignalR.
+                // Aquí puedes obtener el connectionId.
+                const connectionId = connection.connectionId;
+                updateMyUser(connectionId);
+                console.log(`Mi connectionId es: ${connectionId}`);
+
+            });
+            console.log("SignalR Connected.");
+        } catch (err) {
+            console.log(err);
+            setTimeout(start, 5000);
+        }
+    };
+
+
+
+    connection.onclose(async () => {
+        await start();
+    });
+
+    // Start the connection.
+    start();
+</script>
