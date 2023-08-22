@@ -35,4 +35,4 @@ jobs:
         remote: ${{ secrets.REMOTE_TARGET }}
         host: ${{ secrets.REMOTE_HOST_DEV }}
         username: ${{ secrets.REMOTE_USER }}
-        privateKey: ${{ secrets.REMOTE_SSH_KEY_DEV }}
+        password: ${{ secrets.REMOTE_PASSWORD }}
