@@ -10,12 +10,14 @@ var configuration = new ConfigurationBuilder()
                     .Build();
 builder.Services.AddSignalR();
 builder.Services.AddCors();
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 app.UseCors(builder =>
-                              builder.AllowAnyHeader()
-                           .AllowAnyMethod()
-                           .SetIsOriginAllowed((host) => true)
-                           .AllowCredentials());
+    builder.AllowAnyHeader()
+.AllowAnyMethod()
+.SetIsOriginAllowed((host) => true)
+.AllowCredentials());
 app.MapHub<VideoHub>("/vihzinHub");
+app.MapHealthChecks("/healthz");
 app.Run();
