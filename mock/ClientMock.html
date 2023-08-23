@@ -22,6 +22,10 @@
         <video id="remoteVideo" autoplay></video>
         <audio id="remoteAudio" autoplay></audio>
         <video id="remoteScreen" autoplay></video>
+        <div>
+            <div class="label">Connection state:</div>
+            <div id="pc1ConnState" class="value"></div>
+        </div>
     </div>
 
     <!-- Modal -->
@@ -39,7 +43,30 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.0/signalr.min.js"></script>
 <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
 <script>
+    const pc1ConnStateDiv = document.querySelector('div#pc1ConnState');
+    const remoteVideo = document.getElementById("remoteVideo");
+    const remoteScreen = document.getElementById("remoteScreen");
+    const userListTextarea = document.getElementById('userList');
     const modal = document.getElementById('modal');
+    const h2MyUser = document.getElementById('userI')
+    const remoteAudio = document.getElementById("remoteAudio");
+
+    const configuration = { "iceServers": [{ "url": "stun:stun.l.google.com:19302" }] };/*{
+        iceServers: [
+            {
+                urls: "turn:82.180.133.163:3478",
+                username: "root",
+                credential: "root",
+            },
+        ],
+    };*/
+
+    const offerOptions = {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+        offerToReceiveScreen: true
+    };
+
     let resolverPromesa;
 
     const getLocalScreenCaptureStream = async () => {
@@ -62,57 +89,54 @@
         );
         sender.replaceTrack(screenTrack);
     }
+
     function abrirModal() {
         modal.style.display = 'block';
         return new Promise((resolve) => {
             resolverPromesa = resolve;
         });
     }
+
     function confirmarAccion(decision) {
         modal.style.display = 'none';
         resolverPromesa(decision);
     }
 
-    const offerOptions = {
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
-        offerToReceiveScreen: true
-    };
     function actualizarListaUsuarios(userId) {
-        const userListTextarea = document.getElementById('userList');
         userListTextarea.value += userId + '\n';
     }
 
     function updateMyUser(userId) {
-        const h2MyUser = document.getElementById('userI')
         h2MyUser.textContent = `User:${userId}`
+    }
+
+    function stateCallback() {
+        if (peerConnection) {
+            const { connectionState } = peerConnection;
+            console.log(`Connection state change callback, state: ${connectionState}`);
+            pc1ConnStateDiv.textContent += ` => ${connectionState}`;
+        }
     }
 
 
     /*WebRTC*/
-    var peerConnection = new RTCPeerConnection();
-    // Escuchar eventos ICE para intercambio de candidatos ICE.
+    var peerConnection = new RTCPeerConnection(configuration);
+    peerConnection.onconnectionstatechange = stateCallback;
 
 
     peerConnection.ontrack = (event) => {
-        const remoteVideo = document.getElementById("remoteVideo");
-        const remoteScreen = document.getElementById("remoteScreen");
         console.log(event.track.kind)
-        // Verificar si la pista es de video o pantalla compartida
-        if (event.track.kind === "video") {
-            remoteVideo.srcObject = event.streams[0];
-        } else if (event.track.kind === "screen") {
-            remoteScreen.srcObject = event.streams[0];
-        }
+        remoteVideo.srcObject = event.streams[0];
     };
 
     // Cuando se reciba un flujo de audio remoto.
     peerConnection.onaddstream = (event) => {
-        const remoteAudio = document.getElementById("remoteAudio");
         remoteAudio.srcObject = event.stream;
     };
+    
     const connection = new signalR.HubConnectionBuilder()
-        .withUrl("http://localhost:5129/vihzinHub")
+        .withUrl("http://82.180.133.163:8086/vihzinHub")
+        //.withUrl("http://localhost:5129/vihzinHub")
         .configureLogging(signalR.LogLevel.Information)
         .build();
 
@@ -126,18 +150,17 @@
             const decision = await abrirModal();
 
             if (decision === true) {
-                console.log('Aceptado');
                 // Crear un nuevo RTCPeerConnection.
                 //peerConnection = new RTCPeerConnection();
                 const receivedOffer = JSON.parse(offer);
                 // Captura de pantalla
-                const constraints = { video: { cursor: 'always' }, audio: false };
-                const screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+                //const constraints = { video: { cursor: 'always' }, audio: false };
+                //const screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
                 // Establecer el flujo local de medios (cámara y micrófono) en el RTCPeerConnection.
                 const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 // Agregar las pistas de la captura de pantalla a la corriente local
-                screenStream.getTracks().forEach(track => peerConnection.addTrack(track, screenStream));
+                //screenStream.getTracks().forEach(track => peerConnection.addTrack(track, screenStream));
                 // Establecer la descripción remota (oferta) en el RTCPeerConnection.
                 await peerConnection.setRemoteDescription(receivedOffer);
 
@@ -171,8 +194,6 @@
             // Establecer la descripción remota (respuesta) en el RTCPeerConnection.
             const receivedAnswer = JSON.parse(answer);
             await peerConnection.setRemoteDescription(receivedAnswer);
-
-            // Manejar la llegada de flujos remotos (video y audio) aquí.
         } catch (error) {
             console.error("Error al procesar la respuesta:", error);
         }
@@ -217,7 +238,6 @@
         try {
             await connection.start().then(() => {
                 // El cliente está conectado al servidor SignalR.
-                // Aquí puedes obtener el connectionId.
                 const connectionId = connection.connectionId;
                 updateMyUser(connectionId);
                 console.log(`Mi connectionId es: ${connectionId}`);
@@ -229,8 +249,6 @@
             setTimeout(start, 5000);
         }
     };
-
-
 
     connection.onclose(async () => {
         await start();
