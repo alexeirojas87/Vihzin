@@ -13,6 +13,7 @@ namespace Vihzin.Hubs
         public async Task SendOffer(string offer, string targetUserId)
         {
             // Enviar la oferta al usuario de destino.
+            _logger.LogInformation("SendOffer to {targetUser}", targetUserId);
             await Clients.Client(targetUserId).SendAsync("ReceiveOffer", offer, Context.ConnectionId);
         }
 
@@ -20,6 +21,7 @@ namespace Vihzin.Hubs
         public async Task SendAnswer(string answer, string senderConnectionId)
         {
             // Enviar la respuesta al usuario que hizo la oferta.
+            _logger.LogInformation("SendAnswer to {targetUser}", senderConnectionId);
             await Clients.Client(senderConnectionId).SendAsync("ReceiveAnswer", answer);
         }
 
@@ -27,6 +29,7 @@ namespace Vihzin.Hubs
         public async Task SendIceCandidate(string iceCandidate, string targetUserId)
         {
             // Enviar el candidato ICE al usuario de destino.
+            _logger.LogInformation("SendIceCandidate to {targetUser}", targetUserId);
             await Clients.Client(targetUserId).SendAsync("ReceiveIceCandidate", iceCandidate);
         }
 
